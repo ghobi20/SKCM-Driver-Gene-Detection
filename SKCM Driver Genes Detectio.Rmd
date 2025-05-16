@@ -22,15 +22,22 @@ SKCM_muts_raw = read.table("SKCM/data_mutations.txt", header = TRUE, sep = "\t",
 SKCM_muts = SKCM_muts_raw[,c("Tumor_Sample_Barcode", "Chromosome", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2")]
 ```
 
-### Detection of hypermutators
+### Detection of hypermutators and estimation of global  TMB
 
 Hypermutators are samples that suffer from a great burden of mutations. Sometimes, these mutations are under mutational procceses that cannot be modeled with a trinucleotide-substitution model. However, as the skin is the organ that resists the most mutational burden of all organs, it is expected to find several hypermutators, therefore, iḿ going to rise the threshold for the definition of a hypermutator, with samples with more than 760 mutations  (>20 muts per mmegabase) considered as hypermutators (https://www.frontiersin.org/journals/immunology/articles/10.3389/fimmu.2022.1006665/full)
 
 ```{r}
 tumor_muts = table(SKCM_muts$Tumor_Sample_Barcode)
-(Hypermuts = tumor_muts[tumor_muts > 760])
+Hypermuts = tumor_muts[tumor_muts > 760]
+
+TMBs = 0
+for (muts in tumor_muts) {
+  TMBs = (muts/33) + TMBs# We divide by 33 because is the number of megabases in the human genome according to GENCODE.
+}
+(global_TMB = TMBs/length(tumor_muts))
+
 ```
-Now, we have 108 samples classified as hypermutators. 
+The global Tumor Mutational Burden is of 19 mutations per Megabse.
 
 ## Driver Detection
 
@@ -47,9 +54,11 @@ Now we need to filter those mutations who have significant q-values. We will cho
 ```{r}
 SKCM_drivers_hyp = SKCM_dndscv_hyp$sel_cv[which(SKCM_dndscv_hyp$sel_cv$qglobal_cv < 0.1 & SKCM_dndscv_hyp$sel_cv$n_mis > 0 & SKCM_dndscv_hyp$sel_cv$n_non > 0), ]
 SKCM_drivers_non_hyp = SKCM_dndscv_non_hyp$sel_cv[which(SKCM_dndscv_non_hyp$sel_cv$qglobal_cv < 0.1 & SKCM_dndscv_non_hyp$sel_cv$n_mis > 0 & SKCM_dndscv_non_hyp$sel_cv$n_non > 0), ]
-SKCM_drivers_hyp_fil = SKCM_drivers_hyp[order(-SKCM_drivers_hyp$wmis_cv),]
-SKCM_drivers_non_hyp_fil = SKCM_drivers_non_hyp[order(-SKCM_drivers_non_hyp$wmis_cv),]
-(SKCM_drivers_final = union(SKCM_drivers_non_hyp_fil$gene_name, SKCM_drivers_hyp_fil$gene_name))
+(SKCM_drivers_final = union(SKCM_drivers_non_hyp$gene_name, SKCM_drivers_hyp$gene_name))
+
+SKCM_drivers_hyp_01 = SKCM_dndscv_hyp$sel_cv[which(SKCM_dndscv_hyp$sel_cv$qglobal_cv < 0.01 & SKCM_dndscv_hyp$sel_cv$n_mis > 0 & SKCM_dndscv_hyp$sel_cv$n_non > 0), ]
+SKCM_drivers_non_hyp_01 = SKCM_dndscv_non_hyp$sel_cv[which(SKCM_dndscv_non_hyp$sel_cv$qglobal_cv < 0.01 & SKCM_dndscv_non_hyp$sel_cv$n_mis > 0 & SKCM_dndscv_non_hyp$sel_cv$n_non > 0), ]
+(SKCM_drivers_final_01 = union(SKCM_drivers_non_hyp_01$gene_name, SKCM_drivers_hyp_01$gene_name))
 ```
 
 
@@ -61,9 +70,15 @@ SKCM_maf = read.maf("SKCM/data_mutations.txt")
 ```
 
 ```{r}
+#This chunk of code will produce a tsv from the genes with a confiability of 0.1 qglobal.
 SKCM_driver_muts = SKCM_maf@data[SKCM_maf@data$Hugo_Symbol %in% SKCM_drivers_final]
 CGI_format = SKCM_driver_muts[, c("Hugo_Symbol", "Tumor_Sample_Barcode", "Chromosome", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2")]
 write.table(CGI_format, "Total_muts_q0.1_CGI.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+#This chunk of code will produce a tsv from the genes with a confiability of 0.10 qglobal.
+SKCM_driver_muts_01 = SKCM_maf@data[SKCM_maf@data$Hugo_Symbol %in% SKCM_drivers_final_01]
+CGI_format = SKCM_driver_muts_01[, c("Hugo_Symbol", "Tumor_Sample_Barcode", "Chromosome", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2")]
+write.table(CGI_format, "Total_muts_q0.01_CGI.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 ```
 
-
+Finally, i have a tsv with the mutations of my driver genes, ready to be proccesed by Cancer Genome Interpreter. 
